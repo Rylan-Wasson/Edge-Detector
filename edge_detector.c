@@ -88,7 +88,21 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
  */
 void write_image(PPMPixel *image, char *filename, unsigned long int width, unsigned long int height)
 {
+    // open a new file
+    FILE *fp = fopen(filename, "wb"); 
+    if(fp == NULL){
+        perror("Error creating file");
+        exit(1);
+    }
 
+    // write header
+    char *head = "P6\n";
+    fwrite(head, 4, 1, fp);
+    unsigned long int x = 1;
+    fprintf(fp, "%lu", width);
+    //fprintf(&height, sizeof(unsigned long int), 1, fp);
+    
+    
     
 }
 
@@ -157,7 +171,22 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     int num_bytes = (3 * num_pixels); // number of bytes required to store pixels
     
     img = malloc(num_bytes); // TODO free me
+    int color;
+    
+    // create pixels from file, store in img
+    for(int i = 0; i < num_pixels; i++){
+        PPMPixel pixel;
+        fread(&color, 1, 1, fp); // r
+        pixel.r = color;
 
+        fread(&color, 1, 1, fp); // g
+        pixel.g = color;
+
+        fread(&color, 1, 1, fp); // b
+        pixel.b = color;
+
+        img[i] = pixel;
+    }
     
 
     return img;
@@ -184,8 +213,8 @@ int main(int argc, char *argv[])
 {
     unsigned long int w = 0;
     unsigned long int h = 0;
-    read_image("./photos-1/cayuga_1.ppm", &w, &h);
-
+    PPMPixel *img = read_image("./photos-1/cayuga_1.ppm", &w, &h);
+    write_image(img,"Test.ppm",w,h);
     return 0;
 }
 
