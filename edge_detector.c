@@ -96,12 +96,15 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     }
 
     // write header
-    char *head = "P6\n";
-    fwrite(head, 4, 1, fp);
-    unsigned long int x = 1;
-    fprintf(fp, "%lu", width);
-    //fprintf(&height, sizeof(unsigned long int), 1, fp);
+    fprintf(fp, "P6\n%lu %lu\n255\n", width, height);
     
+
+    // write pixel data
+    int num_pixels = (width * height);
+    for(int i = 0; i < num_pixels; i++){
+        PPMPixel pixel = image[i];
+        fwrite(&pixel, sizeof(PPMPixel), 1, fp);
+    }
     
     
 }
