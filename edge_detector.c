@@ -117,15 +117,40 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         exit(1);
     } 
     // grab first line
-    char *header = malloc(1024);
-    fgets(header, sizeof(header), fp);
-    printf("%s", header);
+    char *line = malloc(1024);
+    for(int i = 0; i < 10; i++){
+        fgets(line, 1024, fp);
+        printf(">%s",line);
+    }
 
-    // confrim that this is a p6 file
-    if(strcmp(header, "P6\n") != 0){
+    // confirm that this is a p6 file
+    if(strcmp(line, "P6\n") != 0){
         perror("Incorrect file format");
         exit(1);
     } 
+
+    int num_lines = 0;
+    // read the dimensions while skipping comments
+    while(num_lines < 2 && line != NULL){
+        fgets(line, sizeof(line), fp);
+        if(line[0] != '#'){
+            printf("\n%s", line);
+            num_lines++;
+        }
+        
+        if(line[0] != '#'){
+            // dimensions
+            if(num_lines == 0){
+                char *dimension = strtok(line, " "); 
+                sscanf(line, "%lu", width);
+                printf("%s", line);
+            }
+
+            num_lines++;
+        }
+    }
+
+
 
     
 
@@ -151,7 +176,7 @@ void *manage_image_file(void *args){
  */
 int main(int argc, char *argv[])
 {
-    read_image("./photos-1/cayuga_1.ppm", NULL, NULL);
+    read_image("./photos-1/falls_2", NULL, NULL);
 
     return 0;
 }
