@@ -11,6 +11,7 @@
 #define FILTER_WIDTH 3       
 #define FILTER_HEIGHT 3      
 
+#define LINE_SIZE 256
 #define RGB_COMPONENT_COLOR 255
 
 typedef struct {
@@ -117,11 +118,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         exit(1);
     } 
     // grab first line
-    char *line = malloc(1024);
-    for(int i = 0; i < 10; i++){
-        fgets(line, 1024, fp);
-        printf(">%s",line);
-    }
+    char *line = malloc(LINE_SIZE); // TODO free me
+    fgets(line, LINE_SIZE, fp);
 
     // confirm that this is a p6 file
     if(strcmp(line, "P6\n") != 0){
@@ -130,27 +128,35 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     } 
 
     int num_lines = 0;
-    // read the dimensions while skipping comments
+    // grab and store dimensions, confirm rgb component
     while(num_lines < 2 && line != NULL){
-        fgets(line, sizeof(line), fp);
-        if(line[0] != '#'){
-            printf("\n%s", line);
-            num_lines++;
-        }
-        
+        fgets(line, LINE_SIZE, fp);
         if(line[0] != '#'){
             // dimensions
             if(num_lines == 0){
                 char *dimension = strtok(line, " "); 
-                sscanf(line, "%lu", width);
-                printf("%s", line);
-            }
+                sscanf(dimension, "%lu", width);
+                
+                dimension = strtok(NULL, " ");
+                sscanf(dimension, "%lu", height);
+            // confirm rgb component
+            } else if (num_lines == 1){
+                size_t len = strlen(line);
+                line[len-1] = '\0';
 
+                if(strcmp(line, "255") != 0){
+                    perror("RGB error");
+                    exit(1);
+                }
+            }
             num_lines++;
         }
     }
 
-
+    int num_pixels = (*width * *height); // number of pixels in image
+    int num_bytes = (3 * num_pixels); // number of bytes required to store pixels
+    
+    img = malloc(num_bytes); // TODO free me
 
     
 
@@ -176,7 +182,9 @@ void *manage_image_file(void *args){
  */
 int main(int argc, char *argv[])
 {
-    read_image("./photos-1/falls_2", NULL, NULL);
+    unsigned long int w = 0;
+    unsigned long int h = 0;
+    read_image("./photos-1/cayuga_1.ppm", &w, &h);
 
     return 0;
 }
