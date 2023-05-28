@@ -58,7 +58,36 @@ void *compute_laplacian_threadfn(void *params)
     };
 
     int red, green, blue;
-     
+    struct parameter *paramaters = (struct parameter *)params;
+    int num_pixels = paramaters->h * paramaters->w;
+
+    // iterate through pixel data
+    for(int i = paramaters->start; i < paramaters->start + paramaters->size; i++){
+        // red = paramaters->image->r;
+        // green = paramaters->image->g;
+        // blue = paramaters->image->b;
+
+        // current coordinates of pixel
+        int pixel_x = i % paramaters->w;
+        int pixel_y = i / paramaters->w;
+        // iterate through filter width
+        for(int fw = 0; fw < FILTER_WIDTH; fw++){
+            // iterate through filter height
+            for(int fh = 0; fh < FILTER_HEIGHT; fh++){
+                int x = (pixel_x - FILTER_WIDTH / 2 + fw + paramaters->w) % paramaters->w;
+                int y = (pixel_y - FILTER_HEIGHT / 2 + fh + paramaters->h) % paramaters->h;
+
+                red += (paramaters->image[y * paramaters->w + x].r * laplacian[fw][fh]);
+                green += (paramaters->image[y * paramaters->w + x].g * laplacian[fw][fh]);
+                blue += (paramaters->image[y * paramaters->w + x].b * laplacian[fw][fh]);
+            } // filter height
+        } // filter width
+        paramaters->result[pixel_y * paramaters->w + pixel_x].r = red;
+        paramaters->result[pixel_y * paramaters->w + pixel_x].g = green;
+        paramaters->result[pixel_y * paramaters->w + pixel_x].b = blue;
+    } // pixel data
+    
+
       
       
         
@@ -98,15 +127,12 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     // write header
     fprintf(fp, "P6\n%lu %lu\n255\n", width, height);
     
-
     // write pixel data
     int num_pixels = (width * height);
     for(int i = 0; i < num_pixels; i++){
         PPMPixel pixel = image[i];
         fwrite(&pixel, sizeof(PPMPixel), 1, fp);
     }
-    
-    
 }
 
 
@@ -148,6 +174,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     // grab and store dimensions, confirm rgb component
     while(num_lines < 2 && line != NULL){
         fgets(line, LINE_SIZE, fp);
+        // ignore comments
         if(line[0] != '#'){
             // dimensions
             if(num_lines == 0){
@@ -183,15 +210,13 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         pixel.r = color;
 
         fread(&color, 1, 1, fp); // g
-        pixel.g = color;
+        pixel.g = color / 2;
 
         fread(&color, 1, 1, fp); // b
-        pixel.b = color;
+        pixel.b = color / 2;
 
         img[i] = pixel;
     }
-    
-
     return img;
 }
 
@@ -217,7 +242,19 @@ int main(int argc, char *argv[])
     unsigned long int w = 0;
     unsigned long int h = 0;
     PPMPixel *img = read_image("./photos-1/cayuga_1.ppm", &w, &h);
-    write_image(img,"Test.ppm",w,h);
+    
+    struct parameter test;
+    int size = w * h;
+    int num_bytes = 3 * size;
+    test.image = img;
+    test.w = w;
+    test.h = h;
+    test.start = 0;
+    test.size = size;
+    test.result = malloc(size);
+    compute_laplacian_threadfn((void*) &test);
+    write_image(test.result,"Test.ppm",w,h);
+    
     return 0;
 }
 
