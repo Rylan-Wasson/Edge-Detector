@@ -84,17 +84,10 @@ void *compute_laplacian_threadfn(void *params)
                 blue += (paramaters->image[y * paramaters->w + x].b * laplacian[fw][fh]);
             } // filter height
         } // filter width
-        
-
         paramaters->result[pixel_y * paramaters->w + pixel_x].r = truncateColorValue(red);
         paramaters->result[pixel_y * paramaters->w + pixel_x].g = truncateColorValue(green);
         paramaters->result[pixel_y * paramaters->w + pixel_x].b = truncateColorValue(blue);
     } // pixel data
-    
-
-      
-      
-        
     return NULL;
 }
 
@@ -105,10 +98,31 @@ void *compute_laplacian_threadfn(void *params)
  */
 PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, double *elapsedTime) {
 
-    PPMPixel *result;
-   
+    PPMPixel *result = malloc(w * h); //TODO free me
+    pthread_t threads[LAPLACIAN_THREADS];
+    
+    // initialize threads
+    for(int i = 0; i < LAPLACIAN_THREADS; i++){
+        struct parameter params;
+        params.w = w;
+        params.h = h;
+        params.image = image;
+        params.result = result;
+        params.size = (w * h);
+        params.start = (params.size/LAPLACIAN_THREADS) * i;
+        if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, &params) != 0){
+            printf("Error: Cannot create thread");
+            exit(1);
+        }
+    }
 
-
+    // join threads
+    for(int i = 0; i < LAPLACIAN_THREADS; i++){
+        if(pthread_join(threads[i], NULL)){
+            printf("Error: Cannot join threads");
+            exit(1);
+        }
+    }
     return result;
 }
 
