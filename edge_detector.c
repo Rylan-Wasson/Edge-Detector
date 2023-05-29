@@ -14,6 +14,8 @@
 #define LINE_SIZE 256
 #define RGB_COMPONENT_COLOR 255
 
+int truncateColorValue(int value);
+
 typedef struct {
       unsigned char r, g, b;
 } PPMPixel;
@@ -62,10 +64,10 @@ void *compute_laplacian_threadfn(void *params)
     int num_pixels = paramaters->h * paramaters->w;
 
     // iterate through pixel data
-    for(int i = paramaters->start; i < paramaters->start + paramaters->size; i++){
-        // red = paramaters->image->r;
-        // green = paramaters->image->g;
-        // blue = paramaters->image->b;
+    for(int i = paramaters->start; i < (paramaters->start + paramaters->size); i++){
+        red = 0;
+        green = 0;
+        blue = 0;
 
         // current coordinates of pixel
         int pixel_x = i % paramaters->w;
@@ -82,9 +84,11 @@ void *compute_laplacian_threadfn(void *params)
                 blue += (paramaters->image[y * paramaters->w + x].b * laplacian[fw][fh]);
             } // filter height
         } // filter width
-        paramaters->result[pixel_y * paramaters->w + pixel_x].r = red;
-        paramaters->result[pixel_y * paramaters->w + pixel_x].g = green;
-        paramaters->result[pixel_y * paramaters->w + pixel_x].b = blue;
+        
+
+        paramaters->result[pixel_y * paramaters->w + pixel_x].r = truncateColorValue(red);
+        paramaters->result[pixel_y * paramaters->w + pixel_x].g = truncateColorValue(green);
+        paramaters->result[pixel_y * paramaters->w + pixel_x].b = truncateColorValue(blue);
     } // pixel data
     
 
@@ -210,10 +214,10 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         pixel.r = color;
 
         fread(&color, 1, 1, fp); // g
-        pixel.g = color / 2;
+        pixel.g = color;
 
         fread(&color, 1, 1, fp); // b
-        pixel.b = color / 2;
+        pixel.b = color;
 
         img[i] = pixel;
     }
@@ -232,6 +236,22 @@ void *manage_image_file(void *args){
  
     
 }
+
+/* Helper Methods */
+
+
+/* Truncate a colors value to be in range of 0 - 255*/
+int truncateColorValue(int value){
+    if(value > RGB_COMPONENT_COLOR){
+        return RGB_COMPONENT_COLOR;
+    } else if (value < 0){
+        return 0;
+    } else {
+        return value;
+    }
+}
+
+
 /*The driver of the program. Check for the correct number of arguments. If wrong print the message: "Usage ./a.out filename[s]"
   It shall accept n filenames as arguments, separated by whitespace, e.g., ./a.out file1.ppm file2.ppm    file3.ppm
   It will create a thread for each input file to manage.  
@@ -241,8 +261,7 @@ int main(int argc, char *argv[])
 {
     unsigned long int w = 0;
     unsigned long int h = 0;
-    PPMPixel *img = read_image("./photos-1/cayuga_1.ppm", &w, &h);
-    
+    PPMPixel *img = read_image("./photos-1/sage_1.ppm", &w, &h);
     struct parameter test;
     int size = w * h;
     int num_bytes = 3 * size;
