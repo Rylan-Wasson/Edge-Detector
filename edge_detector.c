@@ -98,7 +98,7 @@ void *compute_laplacian_threadfn(void *params)
  */
 PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, double *elapsedTime) {
 
-    PPMPixel *result = malloc(w * h); //TODO free me
+    PPMPixel *result = malloc((w * h) * sizeof(PPMPixel)); //TODO free me
     pthread_t threads[LAPLACIAN_THREADS];
     
     // initialize threads
@@ -110,6 +110,7 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         params.result = result;
         params.size = (w * h);
         params.start = (params.size/LAPLACIAN_THREADS) * i;
+        
         if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, &params) != 0){
             printf("Error: Cannot create thread");
             exit(1);
@@ -117,8 +118,8 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     }
 
     // join threads
-    for(int i = 0; i < LAPLACIAN_THREADS; i++){
-        if(pthread_join(threads[i], NULL)){
+    for(int j = 0; j < LAPLACIAN_THREADS; j++){
+        if(pthread_join(threads[j], NULL)){
             printf("Error: Cannot join threads");
             exit(1);
         }
@@ -276,17 +277,18 @@ int main(int argc, char *argv[])
     unsigned long int w = 0;
     unsigned long int h = 0;
     PPMPixel *img = read_image("./photos-1/sage_1.ppm", &w, &h);
-    struct parameter test;
-    int size = w * h;
-    int num_bytes = 3 * size;
-    test.image = img;
-    test.w = w;
-    test.h = h;
-    test.start = 0;
-    test.size = size;
-    test.result = malloc(size);
-    compute_laplacian_threadfn((void*) &test);
-    write_image(test.result,"Test.ppm",w,h);
+    // struct parameter test;
+    // int size = w * h;
+    // int num_bytes = 3 * size;
+    // test.image = img;
+    // test.w = w;
+    // test.h = h;
+    // test.start = 0;
+    // test.size = size;
+    // test.result = malloc(size);
+    double x = 10;
+    PPMPixel *result = apply_filters(img,w,h,&x);
+    // write_image(test.result,"Test.ppm",w,h);
     
     return 0;
 }
