@@ -16,6 +16,7 @@
 #define FILE_NUM_INDEX 9 // index to update output filename num
 
 int truncateColorValue(int value); // helper method prototype
+pthread_mutex_t lock;
 
 
 typedef struct {
@@ -61,33 +62,32 @@ void *compute_laplacian_threadfn(void *params)
     };
 
     int red, green, blue;
-    struct parameter *paramaters = (struct parameter *)params;
-    int num_pixels = paramaters->h * paramaters->w;
-
+    struct parameter *parameters = (struct parameter *)params;
+    int num_pixels = (parameters->h * parameters->w);
     // iterate through pixel data
-    for(int i = paramaters->start; i < (paramaters->start + paramaters->size); i++){
+    for(int i = parameters->start; i < (parameters->start + parameters->size); i++){
         red = 0;
         green = 0;
         blue = 0;
 
         // current coordinates of pixel
-        int pixel_x = i % paramaters->w;
-        int pixel_y = i / paramaters->w;
+        int pixel_x = i % parameters->w;
+        int pixel_y = i / parameters->w;
         // iterate through filter width
         for(int fw = 0; fw < FILTER_WIDTH; fw++){
             // iterate through filter height
             for(int fh = 0; fh < FILTER_HEIGHT; fh++){
-                int x = (pixel_x - FILTER_WIDTH / 2 + fw + paramaters->w) % paramaters->w;
-                int y = (pixel_y - FILTER_HEIGHT / 2 + fh + paramaters->h) % paramaters->h;
+                int x = (pixel_x - FILTER_WIDTH / 2 + fw + parameters->w) % parameters->w;
+                int y = (pixel_y - FILTER_HEIGHT / 2 + fh + parameters->h) % parameters->h;
 
-                red += (paramaters->image[y * paramaters->w + x].r * laplacian[fw][fh]);
-                green += (paramaters->image[y * paramaters->w + x].g * laplacian[fw][fh]);
-                blue += (paramaters->image[y * paramaters->w + x].b * laplacian[fw][fh]);
+                red += (parameters->image[y * parameters->w + x].r * laplacian[fw][fh]);
+                green += (parameters->image[y * parameters->w + x].g * laplacian[fw][fh]);
+                blue += (parameters->image[y * parameters->w + x].b * laplacian[fw][fh]);
             } // filter height
         } // filter width
-        paramaters->result[pixel_y * paramaters->w + pixel_x].r = truncateColorValue(red);
-        paramaters->result[pixel_y * paramaters->w + pixel_x].g = truncateColorValue(green);
-        paramaters->result[pixel_y * paramaters->w + pixel_x].b = truncateColorValue(blue);
+        parameters->result[pixel_y * parameters->w + pixel_x].r = truncateColorValue(red);
+        parameters->result[pixel_y * parameters->w + pixel_x].g = truncateColorValue(green);
+        parameters->result[pixel_y * parameters->w + pixel_x].b = truncateColorValue(blue);
     } // pixel data
     return NULL;
 }
@@ -98,23 +98,28 @@ void *compute_laplacian_threadfn(void *params)
  Return: result (filtered image)
  */
 PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, double *elapsedTime) {
-
-    PPMPixel *result = malloc((w * h) * sizeof(PPMPixel)); //TODO free me
+    struct timeval start_time, end_time;
+    gettimeofday(&start_time, NULL);
+    PPMPixel *result = malloc((w * h) * sizeof(PPMPixel));
     pthread_t threads[LAPLACIAN_THREADS];
+    struct parameter** params = malloc(LAPLACIAN_THREADS * sizeof(struct parameter*));
     
     // initialize threads
     for(int i = 0; i < LAPLACIAN_THREADS; i++){
-        struct parameter params;
-        params.w = w;
-        params.h = h;
-        params.image = image;
-        params.result = result;
-        params.size = (w * h);
-        params.start = (params.size/LAPLACIAN_THREADS) * i;
+        params[i] = malloc(sizeof(struct parameter));
+        params[i]->w = w;
+        params[i]->h = h;
+        params[i]->image = image;
+        params[i]->result = result;
+        params[i]->size = (w * h) / LAPLACIAN_THREADS;
+        params[i]->start = (params[i]->size * i);
+        printf("Start:%lu\n", params[i]->start);
+        printf("Size:%lu\n", params[i]->size);
         if(i == (LAPLACIAN_THREADS - 1)){ // check for any remainder on last iteration
-            params.size += (int)(params.size % LAPLACIAN_THREADS); 
+            params[i]->size += (params[i]->size % LAPLACIAN_THREADS); 
         }
-        if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, &params) != 0){
+        
+        if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, (void*)params[i]) != 0){
             printf("Error: Cannot create thread");
             exit(1);
         }
@@ -126,9 +131,17 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
             printf("Error: Cannot join threads");
             exit(1);
         }
+        free(params[j]);
     }
+    
+    free(params);
+    gettimeofday(&end_time, NULL);
+    long seconds = end_time.tv_sec - start_time.tv_sec;
+    long microseconds = end_time.tv_usec - start_time.tv_usec;
+    *elapsedTime = seconds + microseconds / 1000000.0;
     return result;
 }
+
 
 /*Create a new P6 file to save the filtered image in. Write the header block
  e.g. P6
@@ -219,8 +232,9 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         }
     }
 
-    int num_pixels = (*width * *height); // number of pixels in image
-    int num_bytes = (3 * num_pixels); // number of bytes required to store pixels
+    unsigned long num_pixels = (*width * *height); // number of pixels in image
+    printf("%lu\n", num_pixels);
+    int num_bytes = (sizeof(PPMPixel) * num_pixels); // number of bytes required to store pixels
     
     img = malloc(num_bytes); // TODO free me
     int color;
@@ -252,17 +266,23 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
 */
 void *manage_image_file(void *args){
+    
     struct file_name_args *file_args = (struct file_name_args *)args;
     
     unsigned long int w = 0;
     unsigned long int h = 0;
+    pthread_mutex_lock(&lock);
     PPMPixel *img = read_image(file_args->input_file_name, &w, &h); // read image
-    
+    pthread_mutex_unlock(&lock);
+
     double elapsed_time = 0;
     PPMPixel *result = apply_filters(img,w,h,&elapsed_time); // apply filter to input image
-    total_elapsed_time += elapsed_time; // update elapsed time
 
+    pthread_mutex_lock(&lock);
+    total_elapsed_time += elapsed_time;
     write_image(result,file_args->output_file_name,w,h); // write filtered image to output file
+    pthread_mutex_unlock(&lock);
+    free(result);
     free(args);
 }
 
@@ -295,17 +315,16 @@ int main(int argc, char *argv[])
     
     int num_files = argc - 1;
     pthread_t threads[num_files];
+    struct file_name_args** args = malloc(num_files * sizeof(struct file_name_args*));
+    pthread_mutex_init(&lock, NULL);
     // iterate through files, creating a thread for each and managing the relevant file
     for(int i = 1; i < num_files+1; i++){
-        struct file_name_args *file_args = malloc(sizeof(struct file_name_args));
-        file_args->input_file_name = argv[i];
-        char output_name[] = "laplaciani.ppm";
-        output_name[9] = 'e';
-        strcpy(file_args->output_file_name, output_name);
-        //file_args->output_file_name[FILE_NUM_INDEX] = (char)i;
+        args[i-1] = malloc(sizeof(struct file_name_args));
+        args[i-1]->input_file_name = argv[i];
+        sprintf(args[i-1]->output_file_name, "laplacian%d.ppm", i);
 
         // create thread, passing file args into manage image file
-        if(pthread_create(&threads[i-1], NULL, manage_image_file, file_args) != 0){ 
+        if(pthread_create(&threads[i-1], NULL, manage_image_file, args[i-1]) != 0){ 
             printf("Error: Cannot create thread");
             exit(1);
         }
@@ -317,8 +336,11 @@ int main(int argc, char *argv[])
             printf("Error: Cannot join threads");
             exit(1);
         }
+        free(args[j]);
     }
-    
+    free(args);
+    pthread_mutex_destroy(&lock);
+    printf("Total Elapsed Time: %f\n", total_elapsed_time);
     return 0;
 }
 
