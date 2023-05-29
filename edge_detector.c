@@ -13,8 +13,10 @@
 
 #define LINE_SIZE 256
 #define RGB_COMPONENT_COLOR 255
+#define FILE_NUM_INDEX 9 // index to update output filename num
 
-int truncateColorValue(int value);
+int truncateColorValue(int value); // helper method prototype
+
 
 typedef struct {
       unsigned char r, g, b;
@@ -40,7 +42,6 @@ struct file_name_args {
 to compute the edge detection of all input images .
 */
 double total_elapsed_time = 0; 
-
 
 /*This is the thread function. It will compute the new values for the region of image specified in params (start to start+size) using convolution.
     For each pixel in the input image, the filter is conceptually placed on top ofthe image with its origin lying on that pixel.
@@ -110,7 +111,9 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         params.result = result;
         params.size = (w * h);
         params.start = (params.size/LAPLACIAN_THREADS) * i;
-        
+        if(i == (LAPLACIAN_THREADS - 1)){ // check for any remainder on last iteration
+            params.size += (int)(params.size % LAPLACIAN_THREADS); 
+        }
         if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, &params) != 0){
             printf("Error: Cannot create thread");
             exit(1);
@@ -180,7 +183,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         exit(1);
     } 
     // grab first line
-    char *line = malloc(LINE_SIZE); // TODO free me
+    char *line = malloc(LINE_SIZE);
     fgets(line, LINE_SIZE, fp);
 
     // confirm that this is a p6 file
@@ -236,6 +239,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
         img[i] = pixel;
     }
+    free(line);
     return img;
 }
 
@@ -248,8 +252,18 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
 */
 void *manage_image_file(void *args){
- 
+    struct file_name_args *file_args = (struct file_name_args *)args;
     
+    unsigned long int w = 0;
+    unsigned long int h = 0;
+    PPMPixel *img = read_image(file_args->input_file_name, &w, &h); // read image
+    
+    double elapsed_time = 0;
+    PPMPixel *result = apply_filters(img,w,h,&elapsed_time); // apply filter to input image
+    total_elapsed_time += elapsed_time; // update elapsed time
+
+    write_image(result,file_args->output_file_name,w,h); // write filtered image to output file
+    free(args);
 }
 
 /* Helper Methods */
@@ -274,21 +288,36 @@ int truncateColorValue(int value){
  */
 int main(int argc, char *argv[])
 {
-    unsigned long int w = 0;
-    unsigned long int h = 0;
-    PPMPixel *img = read_image("./photos-1/sage_1.ppm", &w, &h);
-    // struct parameter test;
-    // int size = w * h;
-    // int num_bytes = 3 * size;
-    // test.image = img;
-    // test.w = w;
-    // test.h = h;
-    // test.start = 0;
-    // test.size = size;
-    // test.result = malloc(size);
-    double x = 10;
-    PPMPixel *result = apply_filters(img,w,h,&x);
-    // write_image(test.result,"Test.ppm",w,h);
+    if(argc < 2){
+        printf("Usage ./edge_detector filename[s]");
+        exit(1);
+    }
+    
+    int num_files = argc - 1;
+    pthread_t threads[num_files];
+    // iterate through files, creating a thread for each and managing the relevant file
+    for(int i = 1; i < num_files+1; i++){
+        struct file_name_args *file_args = malloc(sizeof(struct file_name_args));
+        file_args->input_file_name = argv[i];
+        char output_name[] = "laplaciani.ppm";
+        output_name[9] = 'e';
+        strcpy(file_args->output_file_name, output_name);
+        //file_args->output_file_name[FILE_NUM_INDEX] = (char)i;
+
+        // create thread, passing file args into manage image file
+        if(pthread_create(&threads[i-1], NULL, manage_image_file, file_args) != 0){ 
+            printf("Error: Cannot create thread");
+            exit(1);
+        }
+    }
+
+    // join threads
+    for(int j = 0; j < num_files; j++){
+        if(pthread_join(threads[j], NULL)){
+            printf("Error: Cannot join threads");
+            exit(1);
+        }
+    }
     
     return 0;
 }
