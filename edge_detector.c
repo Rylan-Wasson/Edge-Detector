@@ -113,16 +113,15 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         params[i]->result = result;
         params[i]->size = (w * h) / LAPLACIAN_THREADS;
         params[i]->start = (params[i]->size * i);
-        printf("Start:%lu\n", params[i]->start);
-        printf("Size:%lu\n", params[i]->size);
         if(i == (LAPLACIAN_THREADS - 1)){ // check for any remainder on last iteration
             params[i]->size += (params[i]->size % LAPLACIAN_THREADS); 
         }
-        
+        pthread_mutex_lock(&lock);
         if(pthread_create(&threads[i], NULL, compute_laplacian_threadfn, (void*)params[i]) != 0){
             printf("Error: Cannot create thread");
             exit(1);
         }
+        pthread_mutex_unlock(&lock);
     }
 
     // join threads
@@ -168,6 +167,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
         PPMPixel pixel = image[i];
         fwrite(&pixel, sizeof(PPMPixel), 1, fp);
     }
+    fclose(fp);
 }
 
 
@@ -233,11 +233,10 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     }
 
     unsigned long num_pixels = (*width * *height); // number of pixels in image
-    printf("%lu\n", num_pixels);
     int num_bytes = (sizeof(PPMPixel) * num_pixels); // number of bytes required to store pixels
     
     img = malloc(num_bytes); // TODO free me
-    int color;
+    unsigned char color;
     
     // create pixels from file, store in img
     for(int i = 0; i < num_pixels; i++){
@@ -254,6 +253,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         img[i] = pixel;
     }
     free(line);
+    fclose(fp);
     return img;
 }
 
@@ -266,12 +266,12 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
 */
 void *manage_image_file(void *args){
-    
     struct file_name_args *file_args = (struct file_name_args *)args;
     
     unsigned long int w = 0;
     unsigned long int h = 0;
     pthread_mutex_lock(&lock);
+    
     PPMPixel *img = read_image(file_args->input_file_name, &w, &h); // read image
     pthread_mutex_unlock(&lock);
 
@@ -281,9 +281,10 @@ void *manage_image_file(void *args){
     pthread_mutex_lock(&lock);
     total_elapsed_time += elapsed_time;
     write_image(result,file_args->output_file_name,w,h); // write filtered image to output file
-    pthread_mutex_unlock(&lock);
+    free(img);
     free(result);
     free(args);
+    pthread_mutex_unlock(&lock);
 }
 
 /* Helper Methods */
@@ -322,12 +323,13 @@ int main(int argc, char *argv[])
         args[i-1] = malloc(sizeof(struct file_name_args));
         args[i-1]->input_file_name = argv[i];
         sprintf(args[i-1]->output_file_name, "laplacian%d.ppm", i);
-
+        pthread_mutex_lock(&lock);
         // create thread, passing file args into manage image file
         if(pthread_create(&threads[i-1], NULL, manage_image_file, args[i-1]) != 0){ 
             printf("Error: Cannot create thread");
             exit(1);
         }
+        pthread_mutex_unlock(&lock);
     }
 
     // join threads
@@ -336,8 +338,8 @@ int main(int argc, char *argv[])
             printf("Error: Cannot join threads");
             exit(1);
         }
-        free(args[j]);
     }
+    
     free(args);
     pthread_mutex_destroy(&lock);
     printf("Total Elapsed Time: %f\n", total_elapsed_time);
